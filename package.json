@@ -11,12 +11,14 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@oxlint/binding-win32-x64-msvc": "^1.87.0",
-    "@rolldown/binding-win32-x64-msvc": "^1.2.12",
-    "lightningcss-win32-x64-msvc": "^1.33.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "undici-types": "^8.11.2"
+  },
+  "optionalDependencies": {
+    "@oxlint/binding-win32-x64-msvc": "^1.87.0",
+    "@rolldown/binding-win32-x64-msvc": "^1.2.12",
+    "lightningcss-win32-x64-msvc": "^1.33.0"
   },
   "devDependencies": {
     "@types/node": "^24.19.1",

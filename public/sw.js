@@ -1,5 +1,5 @@
-const CACHE = 'financas-v1';
-const ASSETS = ['/', '/index.html'];
+const CACHE = 'financas-v2';
+const ASSETS = ['./', './index.html'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
