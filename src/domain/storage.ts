@@ -1,9 +1,10 @@
 import type { FinanceData } from './finance.ts';
-import { createEmptyData } from './finance.ts';
+import type { StoredEnvelope } from './sync.ts';
 
 export interface StorageAdapter {
-  load(): Promise<FinanceData>;
-  save(data: FinanceData): Promise<void>;
+  loadEnvelope(): Promise<StoredEnvelope>;
+  save(data: FinanceData): Promise<StoredEnvelope>;
+  saveEnvelope(envelope: StoredEnvelope): Promise<void>;
 }
 
 const DB_NAME = 'financas-pessoais';
@@ -11,29 +12,70 @@ const DB_VERSION = 1;
 const STORE = 'app-state';
 const KEY = 'data';
 
+function nowISO(): string {
+  return new Date().toISOString();
+}
+
+function isValidData(value: unknown): value is FinanceData {
+  if (typeof value !== 'object' || value === null) return false;
+  const d = value as Partial<FinanceData>;
+  return (
+    Array.isArray(d.transactions) &&
+    Array.isArray(d.categories) &&
+    Array.isArray(d.budgets)
+  );
+}
+
+function parseStoredValue(value: unknown): StoredEnvelope | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const v = value as Record<string, unknown>;
+  if (isValidData(v.data) && typeof v.savedAt === 'string') {
+    return { savedAt: v.savedAt, data: v.data };
+  }
+  if (isValidData(value)) {
+    return { savedAt: '', data: value };
+  }
+  return null;
+}
+
 export class IndexedDBAdapter implements StorageAdapter {
-  async load(): Promise<FinanceData> {
+  async loadEnvelope(): Promise<StoredEnvelope> {
     const db = await this.open();
     try {
-      const stored = await this.read(db);
-      if (stored === null) {
-        const fresh = createEmptyData();
-        await this.write(db, fresh);
+      const parsed = await this.read(db);
+      if (parsed === null) {
+        const fresh: StoredEnvelope = { savedAt: '', data: this.emptyData() };
+        await this.writeEnvelope(db, fresh);
         return fresh;
       }
-      return stored;
+      return parsed;
     } finally {
       db.close();
     }
   }
 
-  async save(data: FinanceData): Promise<void> {
+  async save(data: FinanceData): Promise<StoredEnvelope> {
     const db = await this.open();
     try {
-      await this.write(db, data);
+      const envelope: StoredEnvelope = { savedAt: nowISO(), data };
+      await this.writeEnvelope(db, envelope);
+      return envelope;
     } finally {
       db.close();
     }
+  }
+
+  async saveEnvelope(envelope: StoredEnvelope): Promise<void> {
+    const db = await this.open();
+    try {
+      await this.writeEnvelope(db, envelope);
+    } finally {
+      db.close();
+    }
+  }
+
+  private emptyData(): FinanceData {
+    return { version: 1, transactions: [], categories: [], budgets: [] };
   }
 
   private open(): Promise<IDBDatabase> {
@@ -51,54 +93,42 @@ export class IndexedDBAdapter implements StorageAdapter {
     });
   }
 
-  private read(db: IDBDatabase): Promise<FinanceData | null> {
+  private read(db: IDBDatabase): Promise<StoredEnvelope | null> {
     return new Promise((resolve, reject) => {
       const tx = db.transaction(STORE, 'readonly');
       const request = tx.objectStore(STORE).get(KEY);
-      request.onsuccess = () => {
-        const value = request.result as FinanceData | undefined;
-        if (value === undefined || !this.isValidData(value)) {
-          resolve(null);
-          return;
-        }
-        resolve(value);
-      };
+      request.onsuccess = () => resolve(parseStoredValue(request.result));
       request.onerror = () => reject(new Error('Falha ao ler os dados locais.'));
     });
   }
 
-  private write(db: IDBDatabase, data: FinanceData): Promise<void> {
+  private writeEnvelope(db: IDBDatabase, envelope: StoredEnvelope): Promise<void> {
     return new Promise((resolve, reject) => {
       const tx = db.transaction(STORE, 'readwrite');
-      tx.objectStore(STORE).put(data, KEY);
+      tx.objectStore(STORE).put(envelope, KEY);
       tx.oncomplete = () => resolve();
       tx.onabort = () => reject(new Error('Falha ao guardar os dados locais.'));
       tx.onerror = () => reject(new Error('Falha ao guardar os dados locais.'));
     });
   }
-
-  private isValidData(value: unknown): value is FinanceData {
-    if (typeof value !== 'object' || value === null) return false;
-    const d = value as Partial<FinanceData>;
-    return (
-      Array.isArray(d.transactions) &&
-      Array.isArray(d.categories) &&
-      Array.isArray(d.budgets)
-    );
-  }
 }
 
 export class InMemoryAdapter implements StorageAdapter {
-  private data: FinanceData | null = null;
+  private envelope: StoredEnvelope | null = null;
 
-  async load(): Promise<FinanceData> {
-    if (this.data === null) {
-      this.data = createEmptyData();
+  async loadEnvelope(): Promise<StoredEnvelope> {
+    if (this.envelope === null) {
+      this.envelope = { savedAt: '', data: { version: 1, transactions: [], categories: [], budgets: [] } };
     }
-    return this.data;
+    return this.envelope;
   }
 
-  async save(data: FinanceData): Promise<void> {
-    this.data = data;
+  async save(data: FinanceData): Promise<StoredEnvelope> {
+    this.envelope = { savedAt: nowISO(), data };
+    return this.envelope;
+  }
+
+  async saveEnvelope(envelope: StoredEnvelope): Promise<void> {
+    this.envelope = envelope;
   }
 }

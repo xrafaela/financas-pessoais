@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "test": "node --test --experimental-strip-types --no-warnings src/domain/finance.test.ts",
+    "test": "node --test --experimental-strip-types --no-warnings \"src/domain/*.test.ts\"",
     "preview": "vite preview"
   },
   "dependencies": {
